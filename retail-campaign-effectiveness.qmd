@@ -1,0 +1,279 @@
+---
+title: "Retail Campaign Effectiveness"
+author: "Tilabo Williamson"
+date: "2026-10-25"
+format:
+  html:
+    theme: cosmo
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true
+    toc: true
+    embed-resources: true
+    output-dir: docs
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+```{r echo=FALSE}
+library(pacman)
+p_load(magrittr, tidyverse, psych, dplyr, prettydoc, haven, janitor, readxl, writexl, stringr, purrr, tibble, ggplot2, kableExtra, corrplot, patchwork, skimr)
+```
+
+# Background
+
+The data covers two years of grocery shopping by 2500 households who shop regularly at one U.S. retailer. It has about 2.6 million line items recording which household bought which product, when, in which store, how many units, and the sales value and any discounts applied. Product details such as department and brand sit in a separate table. Demographics (age, income, household size) exist for 801 households, and campaign tables show which households were targeted by 30 direct-marketing campaigns and which coupons were redeemed.
+
+```{r reading-in-data}
+# Reading in the data
+transactions  <- read_csv("data/raw/transaction_data.csv") %>% 
+  clean_names()
+products      <- read_csv("data/raw/product.csv") %>% 
+  clean_names()
+demographics  <- read_csv("data/raw/hh_demographic.csv") %>% 
+  clean_names()
+campaign_desc <- read_csv("data/raw/campaign_desc.csv") %>% 
+  clean_names()
+campaign_hh   <- read_csv("data/raw/campaign_table.csv") %>% 
+  clean_names()
+redemptions   <- read_csv("data/raw/coupon_redempt.csv") %>% 
+  clean_names()
+```
+
+# Data Quality
+
+## Missingness
+First the data was examined for missingness.
+
+```{r data-quality-missingness}
+# Count missing values in each column
+missing_wide <- transactions %>%
+  summarise(across(everything(), ~ sum(is.na(.x))))
+
+# Turn the wide row into a long table, one row per column
+missing_long <- missing_wide %>%
+  pivot_longer(
+    cols      = everything(),
+    names_to  = "Column",
+    values_to = "Missing values"
+  )
+
+# Display in kable
+missing_long %>%
+  kable(caption = "Missing values per column in the transactions table") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+
+```
+
+## Duplications
+Next we examined the transaction data set for rows that were duplicates.
+
+```{r data-quality-duplicate-rows}
+# Count of any duplicate rows
+n_duplicates <- sum(duplicated(transactions))
+
+cat("Number of duplicate rows:", n_duplicates, "\n")
+```
+
+## Data counts
+The next table shows the counts of key variables in the transaction data set.
+
+```{r data-quality-data-counts}
+# Counts of people, baskets, products, stores, time
+data_counts <- transactions %>% 
+  summarise(
+    households = n_distinct(household_key),
+    baskets    = n_distinct(basket_id),
+    products   = n_distinct(product_id),
+    stores     = n_distinct(store_id),
+    first_day  = min(day),
+    last_day   = max(day),
+    first_week = min(week_no),
+    last_week  = max(week_no)
+  )
+
+# Turn the wide row into a long table, one row per column
+data_counts_long <- data_counts %>%
+  pivot_longer(
+    cols      = everything(),
+    names_to  = "Column",
+    values_to = "Data Counts"
+  )
+
+# Display in kable
+data_counts_long %>%
+  kable(caption = "Counts of key variables from the transaction dataset") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+
+## Sales and quantity values
+Checks for zero or negative sales and zero quantities, which can distort spend totals if left untreated.
+
+```{r}
+# Sales and quantity values
+sales_quantity_values <- transactions %>% 
+  summarise(
+    zero_sales             = sum(sales_value < 0),
+    negative_value_sales   = sum(sales_value = 0),
+    zero_quantity          = sum(quantity == 0),
+    min_sales              = min(sales_value),
+    max_sales              = max(sales_value)
+  )
+
+# Turn the wide row into a long table, one row per column
+sales_quantity_values_wide <- sales_quantity_values %>%
+  pivot_longer(
+    cols      = everything(),
+    names_to  = "Column",
+    values_to = "Values"
+  )
+
+# Display in kable
+sales_quantity_values_wide %>%
+  kable(caption = "Sales and quantity values") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+
+## Demographic coverage
+Shows how many shoppers have demographic details, which limits every analysis by age, income or household size to that subset.
+
+```{r}
+# What share of shoppers have demographic information?
+households_in_transactions <- n_distinct(transactions$household_key)
+households_in_demographics <- n_distinct(demographics$household_key)
+
+cat("Number of households in the transaction data set:", households_in_transactions, "\n")
+cat("Number of households in the transaction data set:", households_in_demographics, "\n")
+cat("Share of shoppers that have transaction and demographic data:", households_in_demographics / households_in_transactions, "\n")
+
+```
+# Descriptive Statistics
+## Line-item summary
+Summarises the size and spread of each purchase line, which shows how skewed spending is before any grouping.
+
+```{r line-item-summary}
+# Put sales and quantity in one long column so we can summarise both at once
+line_item_summary <- transactions %>%
+  select(sales_value, quantity) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  group_by(Variable) %>%
+  summarise(
+    `Mean (SD)` = paste0(round(mean(Value), 2), " (", round(sd(Value), 2), ")"),
+    Median      = round(median(Value), 2),
+    Min         = min(Value),
+    Max         = max(Value)
+  )
+
+# Display in kable
+line_item_summary %>%
+  kable(caption = "Line-item summary: sales value and quantity") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+## Household totals
+Builds one row per household (total spend, number of trips, average basket value), because most later analyses compare households, not single purchases.
+
+```{r household-totals}
+# Total sales value and number of baskets for each household
+household_totals <- transactions %>%
+  group_by(household_key) %>%
+  summarise(
+    total_spend = sum(sales_value),
+    trips       = n_distinct(basket_id)
+  ) %>%
+  mutate(avg_basket_value = total_spend / trips)   # average spend per trip
+
+# Check the first few rows
+head(household_totals)
+```
+
+## Household summary
+Shows the typical household's spend, trips and basket size, with how much they vary, which sets the baseline for judging campaign effects.
+
+```{r household-summary}
+# Same summary as before, now at household level
+household_summary <- household_totals %>%
+  select(total_spend, trips, avg_basket_value) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  group_by(Variable) %>%
+  summarise(
+    `Mean (SD)` = paste0(round(mean(Value), 2), " (", round(sd(Value), 2), ")"),
+    Median      = round(median(Value), 2),
+    Min         = round(min(Value), 2),
+    Max         = round(max(Value), 2)
+  )
+
+# Display in kable
+household_summary %>%
+  kable(caption = "Household summary") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+## Distribution of household spend
+
+Shows whether most households spend a similar amount or a few spend far more, which decides whether means or medians describe them better.
+
+```{r household-spend-histogram}
+# Histogram of total spend per household over the two years
+household_totals %>%
+  ggplot(aes(x = total_spend)) +
+  geom_histogram(bins = 40, fill = "purple", colour = "white") +
+  labs(
+    title = "Distribution of total spend per household",
+    x     = "Total spend over two years",
+    y     = "Number of households"
+  ) +
+  theme_minimal()
+```
+
+## Distribution of basket value
+Shows how much a typical shopping trip is worth, and how skewed trip size is.
+
+```{r basket-value-histogram}
+# Total value of each basket (one shopping trip)
+basket_values <- transactions %>%
+  group_by(basket_id) %>%
+  summarise(basket_value = sum(sales_value))
+
+# Cut off the top 1% so a few huge baskets do not squash the chart
+cutoff <- quantile(basket_values$basket_value, 0.99)
+
+basket_values %>%
+  filter(basket_value <= cutoff) %>%
+  ggplot(aes(x = basket_value)) +
+  geom_histogram(bins = 40, fill = "purple", colour = "white") +
+  labs(
+    title    = "Distribution of basket value",
+    subtitle = "Top 1% of baskets removed for readability",
+    x        = "Basket value",
+    y        = "Number of baskets"
+  ) +
+  theme_minimal()
+```
+
+## Weekly sales over time
+
+Shows the trend and seasonality in total sales, which any campaign comparison needs to allow for.
+
+```{r weekly-sales-line}
+# Total sales for every week in the data
+weekly_sales <- transactions %>%
+  group_by(week_no) %>%
+  summarise(weekly_sales = sum(sales_value))
+
+weekly_sales %>%
+  ggplot(aes(x = week_no, y = weekly_sales)) +
+  geom_line(colour = "purple") +
+  labs(
+    title = "Total sales per week",
+    x     = "Week number",
+    y     = "Total sales"
+  ) +
+  theme_minimal()
+```
+
+
+
