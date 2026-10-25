@@ -21,11 +21,52 @@ library(pacman)
 p_load(magrittr, tidyverse, psych, dplyr, prettydoc, haven, janitor, readxl, writexl, stringr, purrr, tibble, ggplot2, kableExtra, corrplot, patchwork, skimr)
 ```
 
+```{r echo=FALSE}
+# Table styling
+style_table <- function(tbl) {
+  tbl %>%
+    kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover")) %>%
+    row_spec(0, bold = TRUE, color = "white", background = "#2B1231")
+}
+
+# One colour palette and one chart theme, so every chart and table looks the same
+deeppurple  <- "#2B1231"
+lavender  <- "#b19cd9"
+coral <- "#E76F51"
+purple <- "#69359c"
+
+# Number formatters: usd0 = whole dollars, usd2 = dollars and cents, big = thousands separators
+usd0 <- scales::label_dollar(accuracy = 1)
+usd2 <- scales::label_dollar(accuracy = 0.01)
+big  <- scales::label_comma()
+
+theme_report <- theme_minimal(base_size = 13) +
+  theme(
+    plot.title         = element_text(face = "bold", size = 16, colour = "#2B1231"),
+    plot.subtitle      = element_text(colour = purple),
+    plot.caption       = element_text(colour = "grey50", hjust = 0),
+    axis.title         = element_text(colour = purple),
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.x = element_blank(),
+    plot.margin        = margin(12, 16, 12, 12)
+  )
+```
+
+
 # Background
 
-The data covers two years of grocery shopping by 2500 households who shop regularly at one U.S. retailer. It has about 2.6 million line items recording which household bought which product, when, in which store, how many units, and the sales value and any discounts applied. Product details such as department and brand sit in a separate table. Demographics (age, income, household size) exist for 801 households, and campaign tables show which households were targeted by 30 direct-marketing campaigns and which coupons were redeemed.
+Retailers often invest in **direct-marketing campaigns**, such as coupons. The business question is simple: do these campaigns actually change what households buy?
+
+> **Question for this project:** Did these campaigns increase household spend, and did all household types respond in the same way?
+
+This first part of the project explains the data, checks its quality and describes how households shop. Later parts will measure the effect of the campaigns themselves.
+
+## About the data
+
+The data covers two years of grocery shopping by 2500 households who shop regularly at one U.S. retailer. It records every product they bought, as well as which households were targeted by 30 direct-marketing campaigns and which coupons were redeemed.
 
 ```{r reading-in-data}
+#| message: false
 # Reading in the data
 transactions  <- read_csv("data/raw/transaction_data.csv") %>% 
   clean_names()
@@ -41,7 +82,73 @@ redemptions   <- read_csv("data/raw/coupon_redempt.csv") %>%
   clean_names()
 ```
 
+Six data sets are examined in this analysis. The transactions data set is by far the largest and
+is the focus.
+
+```{r data-sets-used}
+# Data set summary
+tables_used <- tibble(
+  Table = c("transactions", "products", "demographics",
+            "campaign_desc", "campaign_hh", "redemptions"),
+  `What it holds` = c(
+    "Every product bought, one row per product per receipt",
+    "Product details such as department and brand",
+    "Age, income and household size (some households only)",
+    "The 30 campaigns and their start and end days",
+    "Which households were targeted by which campaign",
+    "Which households redeemed a coupon, and when"
+  ),
+  Rows = big(c(nrow(transactions), nrow(products), nrow(demographics),
+               nrow(campaign_desc), nrow(campaign_hh), nrow(redemptions)))
+)
+
+# Display in kable
+tables_used %>%
+  kable(caption = "The six data sets used in this report", align = c("l", "l", "r")) %>%
+  style_table()
+```
+
+### Key terms
+
+-   **Household:** one shopping household, identified by a household key.
+-   **Basket:** one shopping trip. All line items bought together share the same basket ID.
+-   **Line item:** one product on one receipt. Each row of the transactions table is a line item.
+-   **Campaign:** a direct-marketing effort sent to chosen households, usually with coupons.
+
+### Variables in the transactions data set
+
+```{r variable-dictionary}
+# What each column in the transactions table means
+variable_dictionary <- tibble(
+  Variable = c("household_key", "basket_id", "day", "week_no", "product_id",
+               "store_id", "quantity", "sales_value", "retail_disc",
+               "coupon_disc", "coupon_match_disc", "trans_time"),
+  Meaning = c(
+    "Unique ID for the household that shopped",
+    "Unique ID for one shopping trip; links all items bought together",
+    "Day of the purchase, counted from the start of the data",
+    "Week of the purchase, counted from the start of the data",
+    "Unique ID for the product; links to the products table",
+    "Store where the purchase was made",
+    "Number of units of that product bought on that line",
+    "Money the retailer received for that line, in dollars",
+    "Discount from the retailer's loyalty-card programme (stored as a negative number)",
+    "Discount from a manufacturer coupon",
+    "Discount from the retailer matching a manufacturer coupon",
+    "Time of day of the purchase on a 24-hour clock (1631 = 4:31 pm)"
+  )
+)
+
+# Display in kable
+variable_dictionary %>%
+  kable(caption = "Variable dictionary: transactions table") %>%
+  style_table()
+```
+
 # Data Quality
+
+Before describing or analysing the data, it was checked that it is complete, free of duplicates and free of values that would distort the results.
+
 
 ## Missingness
 First the data was examined for missingness.
@@ -62,9 +169,11 @@ missing_long <- missing_wide %>%
 # Display in kable
 missing_long %>%
   kable(caption = "Missing values per column in the transactions table") %>%
-  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+  style_table()
 
 ```
+
+Across all 12 columns of the `transactions` data set, all columns have 0 rows containing missing data.
 
 ## Duplications
 Next we examined the transaction data set for rows that were duplicates.
@@ -75,6 +184,7 @@ n_duplicates <- sum(duplicated(transactions))
 
 cat("Number of duplicate rows:", n_duplicates, "\n")
 ```
+The `transactions` data set contained **`r (n_duplicates)`** duplicate rows.
 
 ## Data counts
 The next table shows the counts of key variables in the transaction data set.
@@ -104,12 +214,12 @@ data_counts_long <- data_counts %>%
 # Display in kable
 data_counts_long %>%
   kable(caption = "Counts of key variables from the transaction dataset") %>%
-  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+  style_table() 
 ```
 
 
 ## Sales and quantity values
-Checks for zero or negative sales and zero quantities, which can distort spend totals if left untreated.
+Checks for zero or negative sales and zero quantities, which can distort spend totals..
 
 ```{r}
 # Sales and quantity values
@@ -133,7 +243,7 @@ sales_quantity_values_wide <- sales_quantity_values %>%
 # Display in kable
 sales_quantity_values_wide %>%
   kable(caption = "Sales and quantity values") %>%
-  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+  style_table() 
 ```
 
 
@@ -151,8 +261,11 @@ cat("Share of shoppers that have transaction and demographic data:", households_
 
 ```
 # Descriptive Statistics
+
+Basic statistics that describe the data.
+
 ## Line-item summary
-Summarises the size and spread of each purchase line, which shows how skewed spending is before any grouping.
+Summarises the size and spread of each purchase line, which shows how skewed spending is before any grouping. 
 
 ```{r line-item-summary}
 # Put sales and quantity in one long column so we can summarise both at once
@@ -170,8 +283,12 @@ line_item_summary <- transactions %>%
 # Display in kable
 line_item_summary %>%
   kable(caption = "Line-item summary: sales value and quantity") %>%
-  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+  style_table() 
 ```
+
+The typical line item is worth **`r usd2(median(transactions$sales_value))`**
+(median). 
+
 
 ## Household totals
 Builds one row per household (total spend, number of trips, average basket value), because most later analyses compare households, not single purchases.
@@ -186,9 +303,22 @@ household_totals <- transactions %>%
   ) %>%
   mutate(avg_basket_value = total_spend / trips)   # average spend per trip
 
-# Check the first few rows
-head(household_totals)
+# Show the first five households as a check
+household_totals %>%
+  head(5) %>%
+  mutate(
+    total_spend      = usd2(total_spend),
+    avg_basket_value = usd2(avg_basket_value)
+  ) %>%
+  kable(caption = "First five households",
+        col.names = c("Household", "Total spend", "Trips", "Average basket value"),
+        align = c("l", "r", "r", "r")) %>%
+  style_table()
 ```
+
+-   **Total spend:** everything the household spent over the two years.
+-   **Trips:** the number of separate shopping trips (baskets).
+-   **Average basket value:** total spend divided by trips.
 
 ## Household summary
 Shows the typical household's spend, trips and basket size, with how much they vary, which sets the baseline for judging campaign effects.
@@ -209,49 +339,94 @@ household_summary <- household_totals %>%
 # Display in kable
 household_summary %>%
   kable(caption = "Household summary") %>%
-  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+  style_table() 
 ```
 
 ## Distribution of household spend
 
-Shows whether most households spend a similar amount or a few spend far more, which decides whether means or medians describe them better.
+A typical household spent **`r usd0(median(household_totals$total_spend))`**
+over the two years (median). The chart shows whether most households
+spend a similar amount or a few spend far more. If the mean sits to the
+right of the median, a few heavy spenders are pulling the average up.
 
 ```{r household-spend-histogram}
-# Histogram of total spend per household over the two years
+#| fig-width: 10
+#| fig-height: 6
+# Summary numbers used to label the chart
+spend_mean   <- mean(household_totals$total_spend)
+spend_sd     <- sd(household_totals$total_spend)
+spend_median <- median(household_totals$total_spend)
+spend_min    <- min(household_totals$total_spend)
+spend_max    <- max(household_totals$total_spend)
+
 household_totals %>%
   ggplot(aes(x = total_spend)) +
-  geom_histogram(bins = 40, fill = "purple", colour = "white") +
+  geom_histogram(bins = 40, fill = lavender, colour = "white") +
+  geom_vline(xintercept = spend_median, colour = deeppurple, linewidth = 1) +
+  geom_vline(xintercept = spend_mean, colour = coral, linewidth = 1, linetype = "dashed") +
+  annotate("text", x = spend_median, y = Inf, hjust = 1.08, vjust = 1.6,
+           label = paste0("Median: ", usd0(spend_median)),
+           colour = deeppurple, fontface = "bold", size = 4.2) +
+  annotate("text", x = spend_mean, y = Inf, hjust = -0.08, vjust = 1.6,
+           label = paste0("Mean: ", usd0(spend_mean), " (SD ", usd0(spend_sd), ")"),
+           colour = coral, fontface = "bold", size = 4.2) +
+  scale_x_continuous(expand = expansion(mult = c(0.2, 0.05)),labels = usd0) +
+  scale_y_continuous(labels = big, expand = expansion(mult = c(0, 0.08))) +
   labs(
-    title = "Distribution of total spend per household",
-    x     = "Total spend over two years",
-    y     = "Number of households"
-  ) +
-  theme_minimal()
+    title    = "Total spend per household over two years",
+    subtitle = paste0("Range: ", usd0(spend_min), " to ", usd0(spend_max),
+                      " across ", big(nrow(household_totals)), " households"),
+    x        = "Total spend over two years",
+    y        = "Number of households",
+    caption  = "Solid line = median; dashed line = mean."
+  )
 ```
 
 ## Distribution of basket value
 Shows how much a typical shopping trip is worth, and how skewed trip size is.
 
 ```{r basket-value-histogram}
+#| fig-width: 9
+#| fig-height: 5.5
 # Total value of each basket (one shopping trip)
 basket_values <- transactions %>%
   group_by(basket_id) %>%
   summarise(basket_value = sum(sales_value))
 
-# Cut off the top 1% so a few huge baskets do not squash the chart
+# Summary numbers use ALL baskets
+basket_mean   <- mean(basket_values$basket_value)
+basket_sd     <- sd(basket_values$basket_value)
+basket_median <- median(basket_values$basket_value)
+basket_min    <- min(basket_values$basket_value)
+basket_max    <- max(basket_values$basket_value)
+
+# Cut off the top 1% of baskets in the chart only, so a few huge baskets do not squash it
 cutoff <- quantile(basket_values$basket_value, 0.99)
 
 basket_values %>%
   filter(basket_value <= cutoff) %>%
   ggplot(aes(x = basket_value)) +
-  geom_histogram(bins = 40, fill = "purple", colour = "white") +
+  geom_histogram(bins = 40, fill = lavender, colour = "white") +
+  geom_vline(xintercept = basket_median, colour = deeppurple, linewidth = 1) +
+  geom_vline(xintercept = basket_mean, colour = coral, linewidth = 1, linetype = "dashed") +
+  annotate("text", x = basket_median, y = Inf, hjust = 1.08, vjust = 1.6,
+           label = paste0("Median: ", usd2(basket_median)),
+           colour = deeppurple, fontface = "bold", size = 4.2) +
+  annotate("text", x = basket_mean, y = Inf, hjust = -0.08, vjust = 1.6,
+           label = paste0("Mean: ", usd2(basket_mean), " (SD ", usd2(basket_sd), ")"),
+           colour = coral, fontface = "bold", size = 4.2) +
+  scale_x_continuous(expand = expansion(mult = c(0.2, 0.05)), labels = usd0) +
+  scale_y_continuous(labels = big, expand = expansion(mult = c(0, 0.08))) +
   labs(
-    title    = "Distribution of basket value",
-    subtitle = "Top 1% of baskets removed for readability",
+    title    = "Value of each shopping trip",
+    subtitle = paste0("All ", big(nrow(basket_values)), " baskets range from ",
+                      usd2(basket_min), " to ", usd2(basket_max),
+                      ". The chart hides the top 1% (above ", usd0(cutoff), ")."),
     x        = "Basket value",
-    y        = "Number of baskets"
+    y        = "Number of baskets",
+    caption  = "Solid line = median; dashed line = mean. Mean, SD and range use all baskets."
   ) +
-  theme_minimal()
+  theme_report
 ```
 
 ## Weekly sales over time
@@ -259,20 +434,43 @@ basket_values %>%
 Shows the trend and seasonality in total sales, which any campaign comparison needs to allow for.
 
 ```{r weekly-sales-line}
+#| fig-width: 9
+#| fig-height: 5.5
 # Total sales for every week in the data
 weekly_sales <- transactions %>%
   group_by(week_no) %>%
   summarise(weekly_sales = sum(sales_value))
 
+# Summary numbers and the best and worst weeks, used for labels
+weekly_mean <- mean(weekly_sales$weekly_sales)
+weekly_sd   <- sd(weekly_sales$weekly_sales)
+peak_week   <- weekly_sales %>% slice_max(weekly_sales, n = 1)
+low_week    <- weekly_sales %>% slice_min(weekly_sales, n = 1)
+
 weekly_sales %>%
   ggplot(aes(x = week_no, y = weekly_sales)) +
-  geom_line(colour = "purple") +
+  geom_hline(yintercept = weekly_mean, colour = purple, linetype = "dotted") +
+  geom_line(colour = deeppurple, linewidth = 0.9) +
+  geom_smooth(method = "loess", formula = y ~ x, se = FALSE,
+              colour = coral, linetype = "dashed", linewidth = 0.9) +
+  geom_point(data = peak_week, colour = lavender, size = 3.5) +
+  geom_point(data = low_week, colour = coral, size = 3.5) +
+  geom_label(data = peak_week, vjust = -0.7, colour = lavender, fontface = "bold",
+             aes(label = paste0("Highest: ", usd0(weekly_sales), " (week ", week_no, ")"))) +
+  geom_label(data = low_week, vjust = 1.7, colour = coral, fontface = "bold",
+             aes(label = paste0("Lowest: ", usd0(weekly_sales), " (week ", week_no, ")"))) +
+  annotate("text", x = -Inf, y = weekly_mean, hjust = -0.05, vjust = 0,
+           label = paste0("Mean: ", usd0(weekly_mean), " (SD ", usd0(weekly_sd), ")"),
+           colour = purple, fontface = "bold", size = 4.2) +
+  scale_x_continuous(expand = expansion(mult = c(0.3, 0.2)), breaks = seq(0, 104, by = 13)) +
+  scale_y_continuous(labels = usd0, expand = expansion(mult = c(0.12, 0.15))) +
   labs(
-    title = "Total sales per week",
-    x     = "Week number",
-    y     = "Total sales"
-  ) +
-  theme_minimal()
+    title    = "Total sales per week",
+    subtitle = paste0("Weekly sales across ", nrow(weekly_sales), " weeks"),
+    x        = "Week number",
+    y        = "Total sales",
+    caption  = "deeppurple line = weekly total; dashed coral line = smoothed trend; dotted grey line = mean."
+  )
 ```
 
 
