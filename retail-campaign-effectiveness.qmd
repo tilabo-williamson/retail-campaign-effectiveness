@@ -324,71 +324,8 @@ household_totals %>%
 -   **Trips:** the number of separate shopping trips (baskets).
 -   **Average basket value:** total spend divided by trips.
 
-## Distribution of household measures
 
-Shows how total spend, number of trips and average basket value vary across households, so you can see at a glance whether households are similar or very different.
 
-```{r household-histograms}
-#| fig-width: 15
-#| fig-height: 5
-# Create long data
-household_long <- household_totals %>%
-  select(total_spend, trips, avg_basket_value) %>%
-  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
-  mutate(Variable = factor(Variable, levels = c("total_spend", "trips", "avg_basket_value")))
-
-# Work out the summary numbers for each measure
-household_stats <- household_long %>%
-  group_by(Variable) %>%
-  summarise(
-    mean   = mean(Value),
-    sd     = sd(Value),
-    median = median(Value),
-    min    = min(Value),
-    max    = max(Value)
-  )
-
-# Build the label shown above each panel (name, mean (SD), median, range)
-household_stats <- household_stats %>%
-  mutate(
-    Title = recode(as.character(Variable),
-                   total_spend      = "Total spend ($)",
-                   trips            = "Number of trips",
-                   avg_basket_value = "Average basket value ($)"),
-    Label = paste0(Title,
-                   "\nMean ",   scales::comma(mean, accuracy = 0.1), " (SD ", scales::comma(sd, accuracy = 0.1), ")",
-                   "\nMedian ", scales::comma(median, accuracy = 0.1),
-                   "\nRange ",  scales::comma(min, accuracy = 0.1), " to ", scales::comma(max, accuracy = 0.1))
-  )
-
-# Link each panel to its label
-panel_labels <- setNames(household_stats$Label, as.character(household_stats$Variable))
-
-# Produce the three histograms side by side
-household_long %>%
-  ggplot(aes(x = Value)) +
-  geom_histogram(bins = 40, fill = lavender, colour = "white") +
-  geom_vline(data = household_stats, aes(xintercept = median),
-             colour = deeppurple, linewidth = 1) +
-  geom_vline(data = household_stats, aes(xintercept = mean),
-             colour = coral, linewidth = 1, linetype = "dashed") +
-  facet_wrap(~ Variable, scales = "free", nrow = 1,
-             labeller = as_labeller(panel_labels)) +
-  scale_x_continuous(labels = big) +
-  scale_y_continuous(labels = big, expand = expansion(mult = c(0, 0.08))) +
-  labs(
-    title    = "How households spend and shop",
-    subtitle = paste0("Each bar counts households; ", big(nrow(household_totals)), " households in total"),
-    x        = NULL,
-    y        = "Number of households",
-    caption  = "Solid line = median; dashed line = mean."
-  ) +
-  theme_report +
-  theme(
-    strip.text    = element_text(face = "bold", colour = deeppurple, hjust = 0, size = 11),
-    panel.spacing = unit(1.2, "lines")
-  )
-```
 
 ## Household summary
 Shows the typical household's spend, trips and basket size, with how much they vary, which sets the baseline for judging campaign effects.
@@ -412,7 +349,7 @@ household_summary %>%
   style_table() 
 ```
 
-## Distribution of household spend
+### Distribution of household spend
 
 A typical household spent **`r usd0(median(household_totals$total_spend))`**
 over the two years (median). The chart shows whether most households
@@ -452,7 +389,7 @@ household_totals %>%
   )
 ```
 
-## Distribution of basket value
+### Distribution of basket value
 Shows how much a typical shopping trip is worth, and how skewed trip size is.
 
 ```{r basket-value-histogram}
