@@ -1,0 +1,17 @@
+project:
+  type: website
+  output-dir: docs
+
+execute:
+  freeze: auto
+  warning: false
+  message: false
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true

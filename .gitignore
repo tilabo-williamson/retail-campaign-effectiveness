@@ -51,3 +51,6 @@ rsconnect/
 
 # raw data is too large for GitHub and is not ours to redistribute
 data/raw/
+
+/.quarto/
+**/*.quarto_ipynb

@@ -2,15 +2,6 @@
 title: "Retail Campaign Effectiveness"
 author: "Tilabo Williamson"
 date: "2026-10-25"
-format:
-  html:
-    theme: cosmo
-    code-fold: true
-    code-summary: "Show code"
-    code-tools: true
-    toc: true
-    embed-resources: true
-    output-dir: docs
 editor: 
   markdown: 
     wrap: 72
