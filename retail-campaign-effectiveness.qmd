@@ -225,8 +225,8 @@ Checks for zero or negative sales and zero quantities, which can distort spend t
 # Sales and quantity values
 sales_quantity_values <- transactions %>% 
   summarise(
-    zero_sales             = sum(sales_value < 0),
-    negative_value_sales   = sum(sales_value = 0),
+    zero_sales             = sum(sales_value == 0),
+    negative_value_sales   = sum(sales_value < 0),
     zero_quantity          = sum(quantity == 0),
     min_sales              = min(sales_value),
     max_sales              = max(sales_value)
@@ -246,6 +246,19 @@ sales_quantity_values_wide %>%
   style_table() 
 ```
 
+There are no negative sales values, so no returns or refunds are recorded as negative sales.
+However, **`r big(sales_quantity_values$zero_sales)`** lines
+(`r scales::percent(sales_quantity_values$zero_sales / nrow(transactions), accuracy = 0.01)`
+of all lines) have a sales value of zero, and **`r big(sales_quantity_values$zero_quantity)`**
+lines (`r scales::percent(sales_quantity_values$zero_quantity / nrow(transactions), accuracy = 0.01)`)
+have a quantity of zero.
+
+**What this means for the analysis:**
+
+-   **Spend:** Lines with zero sales add nothing to a household's total spend, so they don't distort spend totals.
+-   **Averages per line:** They do pull the average line value down slightly, because they count as lines. Household and basket totals are not affected.
+-   **Units:** A quantity of zero can't be used to work out a price per unit, because dividing by zero gives an error. Quantity is not used for that in this report.
+-   **Scale:** Both groups are under 1% of the data, so the main results are very unlikely to change. These rows are kept in, and flagged here for transparency.
 
 ## Demographic coverage
 Shows how many shoppers have demographic details, which limits every analysis by age, income or household size to that subset.
@@ -319,6 +332,72 @@ household_totals %>%
 -   **Total spend:** everything the household spent over the two years.
 -   **Trips:** the number of separate shopping trips (baskets).
 -   **Average basket value:** total spend divided by trips.
+
+## Distribution of household measures
+
+Shows how total spend, number of trips and average basket value vary across households, so you can see at a glance whether households are similar or very different.
+
+```{r household-histograms}
+#| fig-width: 15
+#| fig-height: 5
+# Create long data
+household_long <- household_totals %>%
+  select(total_spend, trips, avg_basket_value) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  mutate(Variable = factor(Variable, levels = c("total_spend", "trips", "avg_basket_value")))
+
+# Work out the summary numbers for each measure
+household_stats <- household_long %>%
+  group_by(Variable) %>%
+  summarise(
+    mean   = mean(Value),
+    sd     = sd(Value),
+    median = median(Value),
+    min    = min(Value),
+    max    = max(Value)
+  )
+
+# Build the label shown above each panel (name, mean (SD), median, range)
+household_stats <- household_stats %>%
+  mutate(
+    Title = recode(as.character(Variable),
+                   total_spend      = "Total spend ($)",
+                   trips            = "Number of trips",
+                   avg_basket_value = "Average basket value ($)"),
+    Label = paste0(Title,
+                   "\nMean ",   scales::comma(mean, accuracy = 0.1), " (SD ", scales::comma(sd, accuracy = 0.1), ")",
+                   "\nMedian ", scales::comma(median, accuracy = 0.1),
+                   "\nRange ",  scales::comma(min, accuracy = 0.1), " to ", scales::comma(max, accuracy = 0.1))
+  )
+
+# Link each panel to its label
+panel_labels <- setNames(household_stats$Label, as.character(household_stats$Variable))
+
+# Produce the three histograms side by side
+household_long %>%
+  ggplot(aes(x = Value)) +
+  geom_histogram(bins = 40, fill = lavender, colour = "white") +
+  geom_vline(data = household_stats, aes(xintercept = median),
+             colour = deeppurple, linewidth = 1) +
+  geom_vline(data = household_stats, aes(xintercept = mean),
+             colour = coral, linewidth = 1, linetype = "dashed") +
+  facet_wrap(~ Variable, scales = "free", nrow = 1,
+             labeller = as_labeller(panel_labels)) +
+  scale_x_continuous(labels = big) +
+  scale_y_continuous(labels = big, expand = expansion(mult = c(0, 0.08))) +
+  labs(
+    title    = "How households spend and shop",
+    subtitle = paste0("Each bar counts households; ", big(nrow(household_totals)), " households in total"),
+    x        = NULL,
+    y        = "Number of households",
+    caption  = "Solid line = median; dashed line = mean."
+  ) +
+  theme_report +
+  theme(
+    strip.text    = element_text(face = "bold", colour = deeppurple, hjust = 0, size = 11),
+    panel.spacing = unit(1.2, "lines")
+  )
+```
 
 ## Household summary
 Shows the typical household's spend, trips and basket size, with how much they vary, which sets the baseline for judging campaign effects.
