@@ -20,7 +20,7 @@ style_table <- function(tbl) {
     row_spec(0, bold = TRUE, color = "white", background = "#2B1231")
 }
 
-# One colour palette and one chart theme, so every chart and table looks the same
+# Colour palette and chart theme
 deeppurple  <- "#2B1231"
 lavender  <- "#b19cd9"
 coral <- "#E76F51"
@@ -43,18 +43,27 @@ theme_report <- theme_minimal(base_size = 13) +
   )
 ```
 
+# 1. Background
 
-# Background
+Retailers often invest in **direct-marketing campaigns**, such as
+coupons. Households are given coupons as part of these marketing scheme
+but the question is:
 
-Retailers often invest in **direct-marketing campaigns**, such as coupons. The business question is simple: do these campaigns actually change what households buy?
+> Do these campaigns increase household spend, and do all household
+> types respond in the same way?
 
-> **Question for this project:** Did these campaigns increase household spend, and did all household types respond in the same way?
-
-This first part of the project explains the data, checks its quality and describes how households shop. Later parts will measure the effect of the campaigns themselves.
+This first four sections of this project explain the data, check its
+quality, describe how households shop and the campaigns looked at in
+this analysis. Later sections will measure the effect of the campaigns
+themselves. Each section follows the same pattern: what we look at, what
+we found, and what it means for the campaign analysis.
 
 ## About the data
 
-The data covers two years of grocery shopping by 2500 households who shop regularly at one U.S. retailer. It records every product they bought, as well as which households were targeted by 30 direct-marketing campaigns and which coupons were redeemed.
+The data covers two years of grocery shopping by 2500 households who
+shop regularly at one U.S. retailer. It records every product they
+bought, as well as which households were targeted by 30 direct-marketing
+campaigns and which coupons were redeemed.
 
 ```{r reading-in-data}
 #| message: false
@@ -73,8 +82,11 @@ redemptions   <- read_csv("data/raw/coupon_redempt.csv") %>%
   clean_names()
 ```
 
-Six data sets are examined in this analysis. The transactions data set is by far the largest and
-is the focus.
+Six data sets are examined in this analysis. The transactions data set
+is the core of the analysis. It contains one row for every product on
+every receipt. The other data sets describe the products, households and
+campaigns, and link to it through shared IDs such as `household_key` and
+`product_id`.
 
 ```{r data-sets-used}
 # Data set summary
@@ -101,12 +113,22 @@ tables_used %>%
 
 ### Key terms
 
--   **Household:** one shopping household, identified by a household key.
--   **Basket:** one shopping trip. All line items bought together share the same basket ID.
--   **Line item:** one product on one receipt. Each row of the transactions table is a line item.
--   **Campaign:** a direct-marketing effort sent to chosen households, usually with coupons.
+- **Household:** one shopping household, identified by a household key.
+- **Basket:** one shopping trip. All line items bought together share
+  the same basket ID.
+- **Line item:** one product on one receipt. Each row of the
+  transactions table is a line item.
+- **Campaign:** a direct-marketing effort sent to chosen households,
+  usually with coupons.
 
 ### Variables in the transactions data set
+
+The two key variable sin the `transactions` data set are `sales_value`
+(the money received for a line) and `quantity` (the number of units
+bought). Two units of a \$1.50 item is a quantity of 2 and a sales value
+of about \$3.00. Spend in this report is measured with sales value.
+Below is a table summarising key variables from the `transactions` data
+set.
 
 ```{r variable-dictionary}
 # What each column in the transactions table means
@@ -136,12 +158,14 @@ variable_dictionary %>%
   style_table()
 ```
 
-# Data Quality
+# 2. Data Quality
 
-Before describing or analysing the data, it was checked that it is complete, free of duplicates and free of values that would distort the results.
-
+Before describing or analysing the data, it was checked that it is
+complete, free of duplicates and free of values that would distort the
+results.
 
 ## Missingness
+
 First the data was examined for missingness.
 
 ```{r data-quality-missingness}
@@ -164,9 +188,11 @@ missing_long %>%
 
 ```
 
-Across all 12 columns of the `transactions` data set, all columns have 0 rows containing missing data.
+Across all 12 columns of the `transactions` data set, all columns have 0
+rows containing missing data.
 
 ## Duplications
+
 Next we examined the transaction data set for rows that were duplicates.
 
 ```{r data-quality-duplicate-rows}
@@ -175,10 +201,14 @@ n_duplicates <- sum(duplicated(transactions))
 
 cat("Number of duplicate rows:", n_duplicates, "\n")
 ```
-The `transactions` data set contained **`r (n_duplicates)`** duplicate rows.
+
+The `transactions` data set contained **`r (n_duplicates)`** duplicate
+rows.
 
 ## Data counts
-The next table shows the counts of key variables in the transaction data set.
+
+The next table shows the counts of key variables in the transaction data
+set.
 
 ```{r data-quality-data-counts}
 # Counts of people, baskets, products, stores, time
@@ -208,9 +238,16 @@ data_counts_long %>%
   style_table() 
 ```
 
+The data covers **`r big(data_counts$households)`** households,
+**`r big(data_counts$baskets)`** shopping trips and
+**`r big(data_counts$products)`** different products across
+**`r data_counts$stores`** stores. It runs for
+**`r data_counts$last_week`** weeks (`r data_counts$last_day` days).
 
 ## Sales and quantity values
-Checks for zero or negative sales and zero quantities, which can distort spend totals..
+
+Checks for zero or negative sales and zero quantities, which can distort
+spend totals..
 
 ```{r}
 # Sales and quantity values
@@ -237,39 +274,64 @@ sales_quantity_values_wide %>%
   style_table() 
 ```
 
-There are no negative sales values, so no returns or refunds are recorded as negative sales.
-However, **`r big(sales_quantity_values$zero_sales)`** lines
+There are no negative sales values, so no returns or refunds are
+recorded as negative sales. However,
+**`r big(sales_quantity_values$zero_sales)`** lines
 (`r scales::percent(sales_quantity_values$zero_sales / nrow(transactions), accuracy = 0.01)`
-of all lines) have a sales value of zero, and **`r big(sales_quantity_values$zero_quantity)`**
-lines (`r scales::percent(sales_quantity_values$zero_quantity / nrow(transactions), accuracy = 0.01)`)
+of all lines) have a sales value of zero, and
+**`r big(sales_quantity_values$zero_quantity)`** lines
+(`r scales::percent(sales_quantity_values$zero_quantity / nrow(transactions), accuracy = 0.01)`)
 have a quantity of zero.
 
 **What this means for the analysis:**
 
--   **Spend:** Lines with zero sales add nothing to a household's total spend, so they don't distort spend totals.
--   **Averages per line:** They do pull the average line value down slightly, because they count as lines. Household and basket totals are not affected.
--   **Units:** A quantity of zero can't be used to work out a price per unit, because dividing by zero gives an error. Quantity is not used for that in this report.
--   **Scale:** Both groups are under 1% of the data, so the main results are very unlikely to change. These rows are kept in, and flagged here for transparency.
+- **Spend:** Lines with zero sales add nothing to a household's total
+  spend, so they don't distort spend totals.
+- **Averages per line:** They do pull the average line value down
+  slightly, because they count as lines. Household and basket totals are
+  not affected.
+- **Units:** A quantity of zero can't be used to work out a price per
+  unit, because dividing by zero gives an error. Quantity is not used
+  for that in this report.
+- **Scale:** Both groups are under 1% of the data, so the main results
+  are very unlikely to change. These rows are kept in, and flagged here
+  for transparency.
 
 ## Demographic coverage
-Shows how many shoppers have demographic details, which limits every analysis by age, income or household size to that subset.
 
-```{r}
+Shows how many shoppers have demographic details, which limits every
+analysis by age, income or household size to that subset.
+
+```{r demographic-coverage}
 # What share of shoppers have demographic information?
 households_in_transactions <- n_distinct(transactions$household_key)
 households_in_demographics <- n_distinct(demographics$household_key)
 
-cat("Number of households in the transaction data set:", households_in_transactions, "\n")
-cat("Number of households in the transaction data set:", households_in_demographics, "\n")
-cat("Share of shoppers that have transaction and demographic data:", households_in_demographics / households_in_transactions, "\n")
+# Households with demographic details, and the share of all households
+cat("Households in the transactions data:", households_in_transactions, "\n")
+cat("Households with demographic details:", households_in_demographics, "\n")
+cat("Share with demographic details:", scales::percent(households_in_demographics / households_in_transactions, accuracy = 0.1), "\n")
 
 ```
-# Descriptive Statistics
 
-Basic statistics that describe the data.
+Only **`r households_in_demographics`** of
+**`r big(households_in_transactions)`** households
+(`r scales::percent(households_in_demographics / households_in_transactions, accuracy = 1)`)
+have demographic details. Any breakdown by age, income or household size
+describes this group only, not all shoppers.
+
+# 3. Descriptive Statistics
+
+This section describes how much households buy and how much their
+spending varies. In the tables, **Mean (SD)** is the average with the
+spread around it, and **Median** is the middle value. When a few large
+values pull the mean up, the median is a better picture of a typical
+case.
 
 ## Line-item summary
-Summarises the size and spread of each purchase line, which shows how skewed spending is before any grouping. 
+
+Summarises the size and spread of each purchase line, which shows how
+skewed spending is before any grouping.
 
 ```{r line-item-summary}
 # Put sales and quantity in one long column so we can summarise both at once
@@ -290,12 +352,21 @@ line_item_summary %>%
   style_table() 
 ```
 
-The typical line item is worth **`r usd2(median(transactions$sales_value))`**
-(median). 
-
+The typical line item is worth
+**`r usd2(median(transactions$sales_value))`** (median), and the average
+is **`r usd2(mean(transactions$sales_value))`** (SD
+`r usd2(sd(transactions$sales_value))`). The average is higher because a
+few expensive items pull it up. Quantity is more extreme: a few lines
+record very large quantities (the largest is
+`r big(max(transactions$quantity))` units). Because of this, quantity is
+not used in this report and spend is measured with sales value.
 
 ## Household totals
-Builds one row per household (total spend, number of trips, average basket value), because most later analyses compare households, not single purchases.
+
+Builds one row per household (total spend, number of trips, average
+basket value), because most later analyses compare households, not
+single purchases. Most of the later analysis compares households, so
+each household's purchases are added up into a single row.
 
 ```{r household-totals}
 # Total sales value and number of baskets for each household
@@ -320,15 +391,24 @@ household_totals %>%
   style_table()
 ```
 
--   **Total spend:** everything the household spent over the two years.
--   **Trips:** the number of separate shopping trips (baskets).
--   **Average basket value:** total spend divided by trips.
+- **Total spend:** everything the household spent over the two years.
+- **Trips:** the number of separate shopping trips (baskets).
+- **Average basket value:** total spend divided by trips.
 
-
-
+A typical household spent
+**`r usd0(median(household_totals$total_spend))`** over the two years
+(median), made **`r median(household_totals$trips)`** trips and spent
+**`r usd2(median(household_totals$avg_basket_value))`** per trip.
+Average spend is higher, at
+**`r usd0(mean(household_totals$total_spend))`** (SD
+`r usd0(sd(household_totals$total_spend))`), and the SD is almost as
+large as the mean. Households vary a lot: some shop far more than
+others.
 
 ## Household summary
-Shows the typical household's spend, trips and basket size, with how much they vary, which sets the baseline for judging campaign effects.
+
+Shows the typical household's spend, trips and basket size, with how
+much they vary, which sets the baseline for judging campaign effects.
 
 ```{r household-summary}
 # Same summary as before, now at household level
@@ -349,12 +429,23 @@ household_summary %>%
   style_table() 
 ```
 
+A typical household spent
+**`r usd0(median(household_totals$total_spend))`** over the two years
+(median), made **`r median(household_totals$trips)`** trips and spent
+**`r usd2(median(household_totals$avg_basket_value))`** per trip.
+Average spend is higher, at
+**`r usd0(mean(household_totals$total_spend))`** (SD
+`r usd0(sd(household_totals$total_spend))`), and the SD is almost as
+large as the mean. Households vary a lot, meaning some shop far more
+than others.
+
 ### Distribution of household spend
 
-A typical household spent **`r usd0(median(household_totals$total_spend))`**
-over the two years (median). The chart shows whether most households
-spend a similar amount or a few spend far more. If the mean sits to the
-right of the median, a few heavy spenders are pulling the average up.
+A typical household spent
+**`r usd0(median(household_totals$total_spend))`** over the two years
+(median). The chart shows whether most households spend a similar amount
+or a few spend far more. If the mean sits to the right of the median, a
+few heavy spenders are pulling the average up.
 
 ```{r household-spend-histogram}
 #| fig-width: 10
@@ -386,11 +477,21 @@ household_totals %>%
     x        = "Total spend over two years",
     y        = "Number of households",
     caption  = "Solid line = median; dashed line = mean."
-  )
+  ) +
+  theme_report
 ```
 
+Most households sit at the lower end, with a long tail of heavy spenders
+reaching **`r usd0(spend_max)`**. The mean (dashed line) sits to the
+right of the median (solid line), which confirms the skew. For the
+campaign analysis, this means comparing each household with itself
+before and during a campaign is fairer than comparing different
+households with each other.
+
 ### Distribution of basket value
-Shows how much a typical shopping trip is worth, and how skewed trip size is.
+
+Shows how much a typical shopping trip is worth, and how skewed trip
+size is.
 
 ```{r basket-value-histogram}
 #| fig-width: 9
@@ -436,9 +537,18 @@ basket_values %>%
   theme_report
 ```
 
+A typical trip is worth **`r usd2(basket_median)`** (median), and the
+average is **`r usd2(basket_mean)`** (SD `r usd2(basket_sd)`). Most
+trips are modest, and a few large shops pull the average up. The chart
+hides the top 1% of baskets (above `r usd0(cutoff)`) so the main shape
+is visible, but the figures use every basket.
+
 ## Weekly sales over time
 
-Shows the trend and seasonality in total sales, which any campaign comparison needs to allow for.
+This chart shows total sales for each week. The sharp rise at the start
+is not a spending boom. It happens because households enter the data
+gradually, which the next two charts show. Weeks 1 to 19 are shaded as a
+warm-up period.
 
 ```{r weekly-sales-line}
 #| fig-width: 9
@@ -456,8 +566,12 @@ low_week    <- weekly_sales %>% slice_min(weekly_sales, n = 1)
 
 weekly_sales %>%
   ggplot(aes(x = week_no, y = weekly_sales)) +
-  geom_hline(yintercept = weekly_mean, colour = purple, linetype = "dotted") +
   geom_line(colour = deeppurple, linewidth = 0.9) +
+  annotate("rect", xmin = -Inf, xmax = 19.5, ymin = -Inf, ymax = Inf,
+           fill = lavender, alpha = 0.25) +
+  annotate("text", x = 10, y = Inf, vjust = 1.6,
+           label = "Warm-up period\n(weeks 1 to 19)",
+           colour = deeppurple, fontface = "bold", size = 4) +
   geom_smooth(method = "loess", formula = y ~ x, se = FALSE,
               colour = coral, linetype = "dashed", linewidth = 0.9) +
   geom_point(data = peak_week, colour = lavender, size = 3.5) +
@@ -466,19 +580,252 @@ weekly_sales %>%
              aes(label = paste0("Highest: ", usd0(weekly_sales), " (week ", week_no, ")"))) +
   geom_label(data = low_week, vjust = 1.7, colour = coral, fontface = "bold",
              aes(label = paste0("Lowest: ", usd0(weekly_sales), " (week ", week_no, ")"))) +
-  annotate("text", x = -Inf, y = weekly_mean, hjust = -0.05, vjust = 0,
-           label = paste0("Mean: ", usd0(weekly_mean), " (SD ", usd0(weekly_sd), ")"),
-           colour = purple, fontface = "bold", size = 4.2) +
   scale_x_continuous(expand = expansion(mult = c(0.3, 0.2)), breaks = seq(0, 104, by = 13)) +
   scale_y_continuous(labels = usd0, expand = expansion(mult = c(0.12, 0.15))) +
   labs(
     title    = "Total sales per week",
-    subtitle = paste0("Weekly sales across ", nrow(weekly_sales), " weeks"),
+    subtitle = "Sales rise sharply while households join the data, then level off",
     x        = "Week number",
     y        = "Total sales",
-    caption  = "deeppurple line = weekly total; dashed coral line = smoothed trend; dotted grey line = mean."
-  )
+    caption  = "Dark purple line = weekly total; dashed coral line = smoothed trend; shaded area = warm-up weeks excluded from baseline comparisons."
+  ) +
+  theme_report
 ```
 
+The next two charts split total sales into its two parts: how many
+households shopped each week, and how much each of them spent.
+
+```{r weekly-active-households-and-sales}
+#| fig-width: 9
+#| fig-height: 8
+# Count how many different households shopped in each week, and the sales per active household
+active_households <- transactions %>%
+  group_by(week_no) %>%
+  summarise(
+    active_households = n_distinct(household_key),
+    weekly_sales      = sum(sales_value)
+  ) %>%
+  mutate(sales_per_active_household = weekly_sales / active_households)
+
+# Summary numbers used in the chart subtitles
+hh_mean <- mean(active_households$active_households)
+hh_sd   <- sd(active_households$active_households)
+sp_mean <- mean(active_households$sales_per_active_household)
+sp_sd   <- sd(active_households$sales_per_active_household)
+
+# Chart 1: how many households shopped each week
+chart_active <- active_households %>%
+  ggplot(aes(x = week_no, y = active_households)) +
+  geom_line(colour = deeppurple, linewidth = 0.9) +
+  scale_x_continuous(breaks = seq(0, 104, by = 13)) +
+  scale_y_continuous(labels = big, limits = c(0, NA)) +
+  labs(
+    title    = "Households shopping each week",
+    subtitle = paste0("Mean ", big(round(hh_mean)), " (SD ", big(round(hh_sd)), "); range ",
+                      big(min(active_households$active_households)), " to ",
+                      big(max(active_households$active_households))),
+    x = "Week number", y = "Active households"
+  ) +
+  theme_report
+
+# Chart 2: sales per active household each week
+chart_per_household <- active_households %>%
+  ggplot(aes(x = week_no, y = sales_per_active_household)) +
+  geom_line(colour = coral, linewidth = 0.9) +
+  geom_smooth(method = "lm", colour = deeppurple) +
+  scale_x_continuous(breaks = seq(0, 104, by = 13)) +
+  scale_y_continuous(labels = usd2, limits = c(0, NA)) +
+  labs(
+    title    = "Sales per active household each week",
+    subtitle = paste0("Mean ", usd2(sp_mean), " (SD ", usd2(sp_sd), "); range ",
+                      usd2(min(active_households$sales_per_active_household)), " to ",
+                      usd2(max(active_households$sales_per_active_household))),
+    x = "Week number", y = "Sales per household"
+  ) +
+  theme_report
+
+# Stack the two charts (patchwork is already loaded)
+chart_active / chart_per_household
+```
+
+**Top chart:** the number of households shopping each week climbs from
+**`r min(active_households$active_households)`** to about
+**`r big(max(active_households$active_households))`** and levels off
+around week 17. **Bottom chart:** sales per active household stay steady
+at **`r usd2(sp_mean)`** (SD `r usd2(sp_sd)`), with only a gentle upward
+drift (purple line). So the early rise in total sales comes from more
+households appearing in the data, not from households spending more.
+Weeks 1 to 19 are therefore excluded when comparing spend before and
+during campaigns. Sales dip in the final weeks, so the last week may be
+only partly recorded.
+
+# 4. Campaigns
+
+Before measuring any effect, we need to know what the campaigns were:
+how many, what type, when they ran and how many households each one
+targeted.
+
+## Campaign overview
+
+Lists each campaign with its type, timing and reach, in the order they
+started. Weeks are worked out from the day numbers so they match the
+weekly charts.
+
+```{r campaign-overview}
+# Count how many different households each campaign targeted
+campaign_targets <- campaign_hh %>%
+  group_by(campaign) %>%
+  summarise(households_targeted = n_distinct(household_key))
+
+# Join the counts to the campaign descriptions and work out weeks and length
+campaign_overview <- campaign_desc %>%
+  left_join(campaign_targets, by = "campaign") %>%
+  mutate(
+    start_week  = ceiling(start_day / 7),     # day 1 to 7 is week 1
+    end_week    = ceiling(end_day / 7),
+    length_days = end_day - start_day + 1
+  ) %>%
+  mutate(description = str_replace(description, "Type", "Type ")) %>% 
+  arrange(start_day) %>%
+  select(campaign, description, start_week, end_week, length_days, households_targeted)
+
+# Display in kable
+campaign_overview %>%
+  kable(caption = "The campaigns in order of start date",
+        col.names = c("Campaign", "Type", "Start week", "End week", "Length (days)", "Households targeted"),
+        align = c("l", "l", "r", "r", "r", "r")) %>%
+  style_table()
+```
+
+## Campaign types
+
+The campaigns come in three types, labelled A, B and C. They differ in
+how coupons were given out:
+
+- **Type A:** each household in the campaign received 16 coupons, chosen
+  from a pool of coupons according to what that household had bought
+  before.
+- **Type B and Type C:** every household in the campaign received all of
+  the coupons for that campaign.
+
+This matters for the analysis. Type A coupons were matched to each
+household's past buying, so households may already have been likely to
+buy those products. Results are therefore compared by campaign type as
+well as overall.
+
+```{r campaign-types}
+# Summarise the campaigns by type: how many, how long, how many households targeted
+campaign_types <- campaign_overview %>%
+  group_by(description) %>%
+  summarise(
+    Campaigns                        = n(),
+    `Length in days, mean (SD)`      = paste0(round(mean(length_days)), " (", round(sd(length_days)), ")"),
+    `Households targeted, mean (SD)` = paste0(big(round(mean(households_targeted))), " (",
+                                              big(round(sd(households_targeted))), ")")
+  )
+
+# Display in kable
+campaign_types %>%
+  kable(caption = "Campaigns by type", col.names = c("Type", "Campaigns", "Length in days, mean (SD)", "Households targeted, mean (SD)"),
+        align = c("l", "r", "r", "r")) %>%
+  style_table()
+```
+
+There were a total of **`r sum(campaign_types$Campaigns)`** campaigns:
+**`r campaign_types$Campaigns[1]`** `r campaign_types$description[1]`,
+**`r campaign_types$Campaigns[2]`** `r campaign_types$description[2]`
+and **`r campaign_types$Campaigns[3]`** `r campaign_types$description[3]`. 
+
+The highest average reach was for
+**`r names(which.max(tapply(campaign_overview$households_targeted, campaign_overview$description, mean)))`**
+campaigns, targeting an average of
+**`r big(round(max(tapply(campaign_overview$households_targeted, campaign_overview$description, mean))))`**
+households (SD
+`r big(round(sd(campaign_overview$households_targeted[campaign_overview$description == names(which.max(tapply(campaign_overview$households_targeted, campaign_overview$description, mean)))])))`).
+
+## Campaign timeline
+
+Shows when each campaign ran against the warm-up period, so any campaign
+that overlaps it stands out.
+
+```{r campaign-timeline}
+#| fig-width: 10
+#| fig-height: 7
+# Order the campaigns by start date (earliest at the top)
+campaign_timeline <- campaign_overview %>%
+  mutate(campaign_label = factor(campaign, levels = rev(campaign)))
+
+campaign_timeline %>%
+  ggplot(aes(y = campaign_label)) +
+  annotate("rect", xmin = -Inf, xmax = 19.5, ymin = -Inf, ymax = Inf,
+           fill = lavender, alpha = 0.25) +
+  geom_segment(aes(x = start_week, xend = end_week, yend = campaign_label, colour = description),
+               linewidth = 4) +
+  scale_colour_manual(values = c(deeppurple, coral, lavender, purple)) +
+  scale_x_continuous(breaks = seq(0, 104, by = 13)) +
+  labs(
+    title    = "When each campaign ran",
+    subtitle = paste0(nrow(campaign_overview), " campaigns; shaded area = warm-up weeks 1 to 19"),
+    x        = "Week number",
+    y        = "Campaign",
+    colour   = "Campaign type"
+  ) +
+  theme_report +
+  theme(legend.position = "top")
+```
+
+
+```{r}
+#| fig-width: 9
+#| fig-height: 5
+# For each week, count how many campaigns were running at the same time
+campaigns_per_week <- tibble(week_no = 1:102) %>%
+  rowwise() %>%
+  mutate(campaigns_running = sum(campaign_overview$start_week <= week_no &
+                                 campaign_overview$end_week   >= week_no)) %>%
+  ungroup()
+
+# Summary numbers for the subtitle (weeks from the first campaign onward)
+since_first <- campaigns_per_week %>% filter(week_no >= min(campaign_overview$start_week))
+overlap_mean <- mean(since_first$campaigns_running)
+overlap_sd   <- sd(since_first$campaigns_running)
+
+campaigns_per_week %>%
+  ggplot(aes(x = week_no, y = campaigns_running)) +
+  geom_col(fill = lavender, width = 0.9) +
+  scale_x_continuous(breaks = seq(0, 104, by = 13)) +
+  scale_y_continuous(breaks = 0:10, expand = expansion(mult = c(0, 0.08))) +
+  labs(
+    title    = "How many campaigns ran at the same time",
+    subtitle = paste0("From week ", min(campaign_overview$start_week), " onward: mean ",
+                      round(overlap_mean, 1), " (SD ", round(overlap_sd, 1), ") campaigns per week; maximum ",
+                      max(campaigns_per_week$campaigns_running)),
+    x        = "Week number",
+    y        = "Campaigns running"
+  ) +
+  theme_report
+
+```
+
+
+```{r}
+# Campaigns that reached too few households give unstable results, so set a minimum
+min_households <- 100
+
+# Count the campaigns by type, and how many reached at least the minimum
+campaign_eligibility <- campaign_overview %>%
+  group_by(description) %>%
+  summarise(
+    Campaigns = n(),
+    `Reached 100 or more households` = sum(households_targeted >= min_households)
+  )
+
+# Display in kable
+campaign_eligibility %>%
+  kable(caption = "Campaigns large enough to analyse",
+        col.names = c("Type", "Campaigns", "Reached 100 or more households"),
+        align = c("l", "r", "r")) %>%
+  style_table()
+```
 
 
